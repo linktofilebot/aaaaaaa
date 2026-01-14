@@ -1,3 +1,4 @@
+from aiohttp import web
 import asyncio
 import random
 import string
@@ -271,4 +272,17 @@ async def auto_save_handler(client, message):
 
 # ==================== ৮. রান কমান্ডস ====================
 print("অভিনন্দন! আপনার বটের পূর্ণাঙ্গ ফাইনাল কোডটি এখন সক্রিয়। 🚀")
-app.run()
+# Render-এর জন্য পোর্টের সমস্যা সমাধান
+async def web_server():
+    server = web.Application()
+    runner = web.AppRunner(server)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    await site.start()
+
+# বট স্টার্ট করার লজিক
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.create_task(web_server()) # ওয়েব সার্ভার স্টার্ট
+    print("বটটি সফলভাবে চালু হয়েছে! 🚀")
+    app.run()
