@@ -204,6 +204,18 @@ async def back_home(client, query):
     btn = InlineKeyboardMarkup([[InlineKeyboardButton("📂 Get Files", callback_data="get_file_logic")],[InlineKeyboardButton("💎 View Plans", callback_data="show_plans_logic"),InlineKeyboardButton("Owner 👑", url=f"https://t.me/{OWNER_USERNAME}")]])
     await query.message.edit_text(f"👋 আসসালামু আলাইকুম!\n🆔 আপনার আইডি: `{user_id}`\n💎 স্ট্যাটাস: {status_txt}", reply_markup=btn)
 
+# ==================== এখানে নতুন ২টা কমান্ড যোগ করা হলো ====================
+@app.on_message(filters.command(["plan", "buy_plan"]))
+async def plan_commands(client, message):
+    plans = await plans_col.find().to_list(100)
+    if not plans: return await message.reply("বর্তমানে কোনো প্ল্যান সেট করা নেই।")
+    txt = "💎 **আমাদের প্রিমিয়াম প্ল্যানসমূহ:**\n\n"
+    for p in plans: txt += f"🔹 {p['days']} দিন - {p['price']} টাকা\n"
+    txt += f"\n💳 প্রিমিয়াম মেম্বারশিপ কিনতে যোগাযোগ করুন: @{OWNER_USERNAME}\n\nপেমেন্ট করার পর আপনাকে একটি **Redeem Code** দেওয়া হবে।"
+    btn = InlineKeyboardMarkup([[InlineKeyboardButton("Owner 👑", url=f"https://t.me/{OWNER_USERNAME}")],[InlineKeyboardButton("🔙 ফিরে যান", callback_data="back_home")]])
+    await message.reply_text(txt, reply_markup=btn)
+# ========================================================================
+
 @app.on_message(filters.command("redeem"))
 async def redeem_cmd(client, message):
     if len(message.command) < 2: return await message.reply("কোড দিন! উদা: `/redeem WK7jd0TjTe`")
