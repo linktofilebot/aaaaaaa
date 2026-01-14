@@ -8,14 +8,14 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime, timedelta
 
 # ==================== ১. কনফিগারেশন (এখানে আপনার তথ্য দিন) ====================
-API_ID = 1234567                 # আপনার API ID
-API_HASH = "your_api_hash"        # আপনার API Hash
-BOT_TOKEN = "your_bot_token"      # BotFather থেকে পাওয়া টোকেন
-ADMIN_ID = 12345678              # আপনার টেলিগ্রাম আইডি
-LOG_CHANNEL = -100123456789       # লগ চ্যানেল আইডি (অবশ্যই -100 সহ)
-FILE_CHANNEL = -100987654321      # ফাইল চ্যানেল আইডি (অবশ্যই -100 সহ)
-MONGODB_URI = "mongodb+srv://..."   # আপনার MongoDB কানেকশন স্ট্রিং
-OWNER_USERNAME = "YourUsername"   # আপনার ইউজারনেম (@ ছাড়া)
+API_ID = 29904834                 # আপনার API ID
+API_HASH = "8b4fd9ef578af114502feeafa2d31938"        # আপনার API Hash
+BOT_TOKEN = "8061645932:AAE8HJGB_culcQ-EVtycl2GSrysTPMxTOHM"      # BotFather থেকে পাওয়া টোকেন
+ADMIN_ID = 7525127704              # আপনার টেলিগ্রাম আইডি
+LOG_CHANNEL = -1003400020848       # লগ চ্যানেল আইডি (অবশ্যই -100 সহ)
+FILE_CHANNEL = -1003513942313      # ফাইল চ্যানেল আইডি (অবশ্যই -100 সহ)
+MONGODB_URI = "mongodb+srv://Demo270:Demo270@cluster0.ls1igsg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"   # আপনার MongoDB কানেকশন স্ট্রিং
+OWNER_USERNAME = "AkashDeveloperBot"   # আপনার ইউজারনেম (@ ছাড়া)
 
 # ==================== ২. ডাটাবেস ও ক্লায়েন্ট সেটআপ ====================
 db_client = AsyncIOMotorClient(MONGODB_URI)
