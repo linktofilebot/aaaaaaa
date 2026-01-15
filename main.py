@@ -297,19 +297,26 @@ async def redeem_cmd(client, message):
 
 # ==================== ৫. অ্যাডমিন কমান্ডসমূহ ====================
 
-@app.on_message(filters.command("index") & filters.user(ADMIN_ID) & filters.chat(FILE_CHANNEL))
+@app.on_message(filters.command("index") & filters.user(ADMIN_ID))
 async def index_files_handler(client, message):
+    # বটের ইনবক্সে লিখলেও সে FILE_CHANNEL থেকে ফাইল খুঁজবে
     status_msg = await message.reply("🔍 ইন্ডেক্সিং শুরু হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন।")
     count = 0
-    async for m in client.get_chat_history(FILE_CHANNEL):
-        if m.video or m.document or m.audio:
-            exists = await files_col.find_one({"msg_id": m.id})
-            if not exists:
-                await files_col.insert_one({"msg_id": m.id, "added_at": datetime.now()})
-                count += 1
-                if count % 50 == 0:
-                    await status_msg.edit(f"⏳ প্রসেসিং চলছে... {count} টি নতুন ফাইল পাওয়া গেছে।")
-    await status_msg.edit(f"✅ ইন্ডেক্সিং সম্পন্ন!\n\n📂 মোট নতুন ফাইল সেভ হয়েছে: `{count}` টি।")
+    
+    try:
+        # পেছনের সব মেসেজ স্ক্যান করা
+        async for m in client.get_chat_history(FILE_CHANNEL):
+            if m.video or m.document or m.audio:
+                exists = await files_col.find_one({"msg_id": m.id})
+                if not exists:
+                    await files_col.insert_one({"msg_id": m.id, "added_at": datetime.now()})
+                    count += 1
+                    if count % 50 == 0:
+                        await status_msg.edit(f"⏳ প্রসেসিং চলছে... {count} টি নতুন ফাইল পাওয়া গেছে।")
+        
+        await status_msg.edit(f"✅ ইন্ডেক্সিং সম্পন্ন!\n\n📂 মোট নতুন ফাইল সেভ হয়েছে: `{count}` টি।")
+    except Exception as e:
+        await status_msg.edit(f"❌ ভুল হয়েছে: {e}\n\nনিশ্চিত করুন বটটি চ্যানেলে অ্যাডমিন আছে।")
 
 @app.on_message(filters.command("cleardata") & filters.user(ADMIN_ID))
 async def cleardata_admin(client, message):
