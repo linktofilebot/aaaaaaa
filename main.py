@@ -3,6 +3,7 @@ import asyncio
 import random
 import string
 import aiohttp
+import re  # নতুন যোগ করা হয়েছে লিংকের জন্য
 from pyrogram import Client, filters, idle
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -110,6 +111,20 @@ async def auto_delete_msg(client, chat_id, message_id, seconds):
     try:
         await client.delete_messages(chat_id, message_id)
     except: pass
+
+# লিংক থেকে চ্যানেল আইডি এবং লাস্ট মেসেজ আইডি বের করার ফাংশন
+def parse_tg_link(link):
+    regex = r"(?:https?://)?t\.me/(?:c/)?([^/]+)/(\d+)"
+    match = re.search(regex, link)
+    if match:
+        chat_val = match.group(1)
+        last_msg_id = int(match.group(2))
+        if chat_val.isdigit():
+            chat_id = int("-100" + chat_val)
+        else:
+            chat_id = f"@{chat_val}" if not chat_val.startswith("@") else chat_val
+        return chat_id, last_msg_id
+    return None, None
 
 # ==================== ৪. ইউজার কমান্ড হ্যান্ডলার ====================
 
@@ -317,6 +332,39 @@ async def index_files_handler(client, message):
         await status_msg.edit(f"✅ ইন্ডেক্সিং সম্পন্ন!\n\n📂 মোট নতুন ফাইল সেভ হয়েছে: `{count}` টি।")
     except Exception as e:
         await status_msg.edit(f"❌ ভুল হয়েছে: {e}\n\nনিশ্চিত করুন বটটি চ্যানেলে অ্যাডমিন আছে।")
+
+@app.on_message(filters.command("batch_index") & filters.user(ADMIN_ID))
+async def batch_index_handler(client, message):
+    if len(message.command) < 2:
+        return await message.reply("📝 **সঠিক নিয়ম:** `/batch_index [মেসেজ লিংক]`")
+
+    link = message.command[1]
+    chat_id, last_id = parse_tg_link(link)
+
+    if not chat_id:
+        return await message.reply("❌ ভুল লিংক! লাস্ট মেসেজের লিংক দিন।")
+
+    status = await message.reply(f"🔍 ইনডেক্সিং শুরু হচ্ছে...\nচ্যানেল: `{chat_id}`\nশেষ আইডি: `{last_id}`")
+    count = 0
+    
+    for i in range(1, last_id + 1):
+        try:
+            # মেসেজটি FILE_CHANNEL-এ কপি করার চেষ্টা
+            msg = await client.copy_message(chat_id=FILE_CHANNEL, from_chat_id=chat_id, message_id=i)
+            
+            # ভিডিও/ফাইল থাকলে ডাটাবেজে সেভ
+            if msg.video or msg.document or msg.audio:
+                await files_col.insert_one({"msg_id": msg.id, "added_at": datetime.now()})
+                count += 1
+            
+            if i % 25 == 0:
+                await status.edit(f"⏳ প্রসেসিং চলছে...\nচেক করা হয়েছে: {i}/{last_id}\nসেভ হয়েছে: {count}")
+            
+            await asyncio.sleep(0.5) # Flood এড়াতে
+        except Exception:
+            continue
+
+    await status.edit(f"✅ **ইনডেক্সিং সম্পন্ন!**\n\n📂 মোট সেভ হয়েছে: `{count}` টি।")
 
 @app.on_message(filters.command("cleardata") & filters.user(ADMIN_ID))
 async def cleardata_admin(client, message):
