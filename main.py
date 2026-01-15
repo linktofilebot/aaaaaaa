@@ -168,7 +168,7 @@ async def start_cmd(client, message):
     except: pass
     await message.reply_text(start_text, reply_markup=btn)
 
-# --- ফিক্সড গেটফাইল হ্যান্ডলার (বাটন এবং কমান্ড দুটোই ধরবে) ---
+# --- গেটফাইল ফিক্স: বাটন ও কমান্ড দুটোই কাজ করবে ---
 @app.on_callback_query(filters.regex("get_file_logic"))
 @app.on_message(filters.command("getfile"))
 async def getfile_handler(client, update):
@@ -176,10 +176,14 @@ async def getfile_handler(client, update):
     user_id = update.from_user.id
     
     user_data = await users_col.find_one({"user_id": user_id})
+    if not user_data: # ডাটাবেসে ইউজার না থাকলে তৈরি করা
+        await users_col.update_one({"user_id": user_id}, {"$set": {"user_id": user_id, "is_premium": False, "p_index": 0, "f_index": 0}}, upsert=True)
+        user_data = await users_col.find_one({"user_id": user_id})
+
     is_prem, _ = await check_premium(user_id)
 
     if is_prem:
-        p_idx = user_data.get("p_index", 0) if user_data else 0
+        p_idx = user_data.get("p_index", 0)
         files = await files_col.find().sort("_id", 1).skip(p_idx).limit(1).to_list(1)
         if not files:
             await users_col.update_one({"user_id": user_id}, {"$set": {"p_index": 0}}) 
@@ -207,7 +211,6 @@ async def getfile_handler(client, update):
         if is_cb: await update.message.reply(txt, reply_markup=btn); await update.answer()
         else: await update.reply(txt, reply_markup=btn)
 
-# --- প্ল্যান বাটন ও কমান্ড (buy_plan ফিক্সড) ---
 @app.on_callback_query(filters.regex("show_plans_logic"))
 @app.on_message(filters.command(["plan", "buy_plan"]))
 async def plan_commands(client, update):
@@ -247,6 +250,17 @@ async def redeem_cmd(client, message):
 
 # ==================== ৫. অ্যাডমিন কমান্ডসমূহ ====================
 
+@app.on_message(filters.command("remove_premium") & filters.user(ADMIN_ID))
+async def remove_prem_admin(client, message):
+    try:
+        if len(message.command) < 2: return await message.reply("ইউজার আইডি দিন। উদা: `/remove_premium 12345678`")
+        u_id = int(message.command[1])
+        await users_col.update_one({"user_id": u_id}, {"$set": {"is_premium": False}, "$unset": {"expiry_date": ""}})
+        await message.reply(f"✅ ইউজার `{u_id}`-এর প্রিমিয়াম মেম্বারশিপ রিমুভ করা হয়েছে।")
+        try: await client.send_message(u_id, "🚫 আপনার প্রিমিয়াম মেম্বারশিপ অ্যাডমিন কর্তৃক রিমুভ করা হয়েছে।")
+        except: pass
+    except Exception as e: await message.reply(f"Error: {e}")
+
 @app.on_message(filters.command("set_shortener") & filters.user(ADMIN_ID))
 async def set_short_admin(client, message):
     try:
@@ -255,11 +269,10 @@ async def set_short_admin(client, message):
         await message.reply(f"✅ সর্টেনার সেট হয়েছে: {url}")
     except: await message.reply("সঠিক নিয়ম: `/set_shortener Domain API`")
 
-# --- নতুন কমান্ড: শর্টনার ডিলিট করার জন্য ---
 @app.on_message(filters.command("del_shortener") & filters.user(ADMIN_ID))
 async def del_shortener_admin(client, message):
     await settings_col.delete_one({"id": "shortener"})
-    await message.reply("❌ শর্টেনার সেটিংস ডিলিট করা হয়েছে। এখন ডিরেক্ট লিংক কাজ করবে।")
+    await message.reply("❌ শর্টেনার সেটিংস ডিলিট করা হয়েছে।")
 
 @app.on_message(filters.command("addtime") & filters.user(ADMIN_ID))
 async def add_time_cmd(client, message):
