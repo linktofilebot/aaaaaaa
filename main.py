@@ -213,43 +213,52 @@ async def getfile_handler(client, update):
 @app.on_message(filters.command("skipfile"))
 async def skip_file_handler(client, message):
     user_id = message.from_user.id
-    
-    # ইউজার প্রিমিয়াম কি না চেক করা
     is_prem, _ = await check_premium(user_id)
     index_field = "p_index" if is_prem else "f_index"
 
-    # কমান্ডের সাথে কোনো সংখ্যা দেওয়া হয়েছে কি না দেখা
     if len(message.command) < 2:
-        return await message.reply(
-            "📝 **কিভাবে ব্যবহার করবেন?**\n\n"
-            "1️⃣ একদম শুরু থেকে ফাইল পেতে লিখুন: `/skipfile 0`\n"
-            "2️⃣ নির্দিষ্ট কোনো ফাইল থেকে শুরু করতে লিখুন: `/skipfile সংখ্যা` (যেমন: `/skipfile 10` দিলে ১১ নম্বর ফাইল থেকে শুরু হবে)\n"
-            "3️⃣ শুধুমাত্র পরের ফাইলে যেতে লিখুন: `/skipfile next`"
-        )
+        return await message.reply("📝 **ব্যবহার:** `/skipfile সংখ্যা` অথবা `/skipfile next`")
 
     input_val = message.command[1].lower()
-
-    # শুধু পরের ফাইলে যাওয়ার লজিক
     if input_val == "next":
         await users_col.update_one({"user_id": user_id}, {"$inc": {index_field: 1}})
-        return await message.reply("⏭ ১টি ফাইল স্কিপ করা হয়েছে। এখন /getfile লিখুন।")
+        return await message.reply("⏭ ১টি ফাইল স্কিপ করা হয়েছে।")
 
-    # সংখ্যা ইনপুট হ্যান্ডলিং
     try:
         target_index = int(input_val)
-        if target_index < 0:
-            return await message.reply("❌ সংখ্যাটি অবশ্যই ০ বা তার বেশি হতে হবে।")
-
-        # ডাটাবেসে ইনডেক্স সেট করা
         await users_col.update_one({"user_id": user_id}, {"$set": {index_field: target_index}})
+        await message.reply(f"✅ ইনডেক্স {target_index} এ সেট করা হয়েছে।")
+    except:
+        await message.reply("❌ ভুল ফরম্যাট! সংখ্যা ব্যবহার করুন।")
 
-        if target_index == 0:
-            await message.reply("🔄 **ইনডেক্স রিসেট করা হয়েছে!**\nএখন /getfile দিলে একদম প্রথম ভিডিও থেকে পাওয়া শুরু করবেন।")
-        else:
-            await message.reply(f"✅ **ইনডেক্স {target_index} এ সেট করা হয়েছে!**\nএখন /getfile দিলে আপনি {target_index + 1} নম্বর ভিডিও থেকে পাওয়া শুরু করবেন।")
+@app.on_message(filters.command("stats"))
+async def stats_handler(client, message):
+    # ডাটাবেস থেকে তথ্য সংগ্রহ
+    total_users = await users_col.count_documents({})
+    total_files = await files_col.count_documents({})
+    premium_users = await users_col.count_documents({"is_premium": True})
+    regular_users = total_users - premium_users
+    
+    stats_txt = (
+        "📊 **বট লাইভ পরিসংখ্যান**\n\n"
+        f"📁 **মোট ভিডিও ফাইল:** `{total_files}` টি\n"
+        f"👥 **মোট ইউজার:** `{total_users}` জন\n"
+        f"💎 **প্রিমিয়াম মেম্বার:** `{premium_users}` জন\n"
+        f"👤 **সাধারণ মেম্বার:** `{regular_users}` জন\n\n"
+        f"📢 **যুক্ত চ্যানেল সংখ্যা:** `২টি` (File & Log)\n"
+        "⚡ **বট স্ট্যাটাস:** সচল (Active)"
+    )
+    
+    btn = InlineKeyboardMarkup([[
+        InlineKeyboardButton("Owner 👑", url=f"https://t.me/{OWNER_USERNAME}"),
+        InlineKeyboardButton("Close ❌", callback_data="close_stats")
+    ]])
+    
+    await message.reply_text(stats_txt, reply_markup=btn)
 
-    except ValueError:
-        await message.reply("❌ ভুল ফরম্যাট! সংখ্যা ব্যবহার করুন। উদা: `/skipfile 5` বা `/skipfile 0`।")
+@app.on_callback_query(filters.regex("close_stats"))
+async def close_stats(client, query):
+    await query.message.delete()
 
 @app.on_callback_query(filters.regex("show_plans_logic"))
 @app.on_message(filters.command(["plan", "buy_plan"]))
