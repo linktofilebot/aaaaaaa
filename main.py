@@ -210,6 +210,47 @@ async def getfile_handler(client, update):
         if is_cb: await update.message.reply(txt, reply_markup=btn); await update.answer()
         else: await update.reply(txt, reply_markup=btn)
 
+@app.on_message(filters.command("skipfile"))
+async def skip_file_handler(client, message):
+    user_id = message.from_user.id
+    
+    # ইউজার প্রিমিয়াম কি না চেক করা
+    is_prem, _ = await check_premium(user_id)
+    index_field = "p_index" if is_prem else "f_index"
+
+    # কমান্ডের সাথে কোনো সংখ্যা দেওয়া হয়েছে কি না দেখা
+    if len(message.command) < 2:
+        return await message.reply(
+            "📝 **কিভাবে ব্যবহার করবেন?**\n\n"
+            "1️⃣ একদম শুরু থেকে ফাইল পেতে লিখুন: `/skipfile 0`\n"
+            "2️⃣ নির্দিষ্ট কোনো ফাইল থেকে শুরু করতে লিখুন: `/skipfile সংখ্যা` (যেমন: `/skipfile 10` দিলে ১১ নম্বর ফাইল থেকে শুরু হবে)\n"
+            "3️⃣ শুধুমাত্র পরের ফাইলে যেতে লিখুন: `/skipfile next`"
+        )
+
+    input_val = message.command[1].lower()
+
+    # শুধু পরের ফাইলে যাওয়ার লজিক
+    if input_val == "next":
+        await users_col.update_one({"user_id": user_id}, {"$inc": {index_field: 1}})
+        return await message.reply("⏭ ১টি ফাইল স্কিপ করা হয়েছে। এখন /getfile লিখুন।")
+
+    # সংখ্যা ইনপুট হ্যান্ডলিং
+    try:
+        target_index = int(input_val)
+        if target_index < 0:
+            return await message.reply("❌ সংখ্যাটি অবশ্যই ০ বা তার বেশি হতে হবে।")
+
+        # ডাটাবেসে ইনডেক্স সেট করা
+        await users_col.update_one({"user_id": user_id}, {"$set": {index_field: target_index}})
+
+        if target_index == 0:
+            await message.reply("🔄 **ইনডেক্স রিসেট করা হয়েছে!**\nএখন /getfile দিলে একদম প্রথম ভিডিও থেকে পাওয়া শুরু করবেন।")
+        else:
+            await message.reply(f"✅ **ইনডেক্স {target_index} এ সেট করা হয়েছে!**\nএখন /getfile দিলে আপনি {target_index + 1} নম্বর ভিডিও থেকে পাওয়া শুরু করবেন।")
+
+    except ValueError:
+        await message.reply("❌ ভুল ফরম্যাট! সংখ্যা ব্যবহার করুন। উদা: `/skipfile 5` বা `/skipfile 0`।")
+
 @app.on_callback_query(filters.regex("show_plans_logic"))
 @app.on_message(filters.command(["plan", "buy_plan"]))
 async def plan_commands(client, update):
