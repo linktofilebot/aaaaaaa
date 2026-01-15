@@ -111,7 +111,7 @@ async def auto_delete_msg(client, chat_id, message_id, seconds):
         await client.delete_messages(chat_id, message_id)
     except: pass
 
-# ==================== ৪. ইউজার ও অ্যাডমিন কমান্ড হ্যান্ডলার ====================
+# ==================== ৪. ইউজার কমান্ড হ্যান্ডলার ====================
 
 @app.on_message(filters.command("start"))
 async def start_cmd(client, message):
@@ -123,13 +123,15 @@ async def start_cmd(client, message):
     if not user_data:
         await users_col.update_one({"user_id": user_id}, {"$set": {"user_id": user_id, "is_premium": False, "p_index": 0, "f_index": 0}}, upsert=True)
 
+    # ভেরিফিকেশন লিংক দিয়ে আসলে (Deep Linking)
     if len(message.command) > 1 and message.command[1].startswith("verify"):
         is_prem, _ = await check_premium(user_id)
-        if is_prem: return await message.reply("আপনি ইতিমধ্যে প্রিমিয়াম মেম্বার। ফাইল পেতে /getfile লিখুন।")
+        if is_prem: return await message.reply("আপনি ইতিমধ্যে প্রিমিয়াম মেম্বার। ফাইল পেতে সরাসরি গেট ফাইল বাটনে ক্লিক করুন।")
         
         user_data = await users_col.find_one({"user_id": user_id})
         f_idx = user_data.get("f_index", 0)
-        files = await files_col.find().sort("_id", 1).skip(f_idx).limit(10).to_list(10)
+        # ১টি ফাইল পাঠানো হবে
+        files = await files_col.find().sort("_id", 1).skip(f_idx).limit(1).to_list(1)
         
         if not files:
             await users_col.update_one({"user_id": user_id}, {"$set": {"f_index": 0}}) 
@@ -144,10 +146,9 @@ async def start_cmd(client, message):
                 sent_msg = await client.copy_message(user_id, FILE_CHANNEL, f["msg_id"], protect_content=p_on)
                 if sent_msg and timer_data:
                     asyncio.create_task(auto_delete_msg(client, user_id, sent_msg.id, timer_data["seconds"]))
-                await asyncio.sleep(1.5) 
             except: pass
         
-        await users_col.update_one({"user_id": user_id}, {"$inc": {"f_index": 10}})
+        await users_col.update_one({"user_id": user_id}, {"$inc": {"f_index": 1}})
         return
 
     is_prem, status_txt = await check_premium(user_id)
@@ -167,7 +168,6 @@ async def getfile_handler(client, update):
     is_cb = isinstance(update, CallbackQuery)
     user_id = update.from_user.id
     
-    # ইউজার ডেটা লোড বা তৈরি
     user_data = await users_col.find_one({"user_id": user_id})
     if not user_data:
         await users_col.update_one({"user_id": user_id}, {"$set": {"user_id": user_id, "is_premium": False, "p_index": 0, "f_index": 0}}, upsert=True)
@@ -176,9 +176,9 @@ async def getfile_handler(client, update):
     is_prem, _ = await check_premium(user_id)
 
     if is_prem:
-        # প্রিমিয়াম ইউজারদের জন্য সরাসরি ১০টি ভিডিও পাঠানোর লজিক (শর্টলিঙ্ক ছাড়া)
+        # প্রিমিয়াম ইউজার সরাসরি ১টি ফাইল পাবে
         p_idx = user_data.get("p_index", 0)
-        files = await files_col.find().sort("_id", 1).skip(p_idx).limit(10).to_list(10)
+        files = await files_col.find().sort("_id", 1).skip(p_idx).limit(1).to_list(1)
         
         if not files:
             await users_col.update_one({"user_id": user_id}, {"$set": {"p_index": 0}}) 
@@ -188,33 +188,24 @@ async def getfile_handler(client, update):
             return
         
         if is_cb: await update.answer("প্রিমিয়াম ফাইল পাঠানো হচ্ছে...", show_alert=False)
-        else: await update.reply("🚀 প্রিমিয়াম মেম্বার হিসেবে আপনার ভিডিওগুলো পাঠানো হচ্ছে...")
-
         p_on = await is_protect_on()
         timer_data = await settings_col.find_one({"id": "auto_delete"})
         
-        count = 0
         for f in files:
             try:
                 sent_msg = await client.copy_message(user_id, FILE_CHANNEL, f["msg_id"], protect_content=p_on)
-                if sent_msg:
-                    count += 1
-                    if timer_data:
-                        asyncio.create_task(auto_delete_msg(client, user_id, sent_msg.id, timer_data["seconds"]))
-                await asyncio.sleep(1.5)
-            except Exception as e:
-                print(f"Error sending premium file: {e}")
+                if sent_msg and timer_data:
+                    asyncio.create_task(auto_delete_msg(client, user_id, sent_msg.id, timer_data["seconds"]))
+            except: pass
         
-        await users_col.update_one({"user_id": user_id}, {"$inc": {"p_index": 10}})
-        if timer_data and count > 0:
-            await client.send_message(user_id, f"✅ {count}টি ভিডিও পাঠানো হয়েছে। ভিডিওগুলো {timer_data['time_str']} পর অটো ডিলিট হয়ে যাবে।")
+        await users_col.update_one({"user_id": user_id}, {"$inc": {"p_index": 1}})
 
     else:
-        # ফ্রি ইউজারদের জন্য শর্টলিঙ্ক লজিক
+        # সাধারণ ইউজার ১টি ফাইলের জন্য ভেরিফাই লিংক পাবে
         me = await client.get_me()
         verify_url = f"https://t.me/{me.username}?start=verify_{user_id}"
         short_link = await get_shortlink(verify_url)
-        txt = "🚫 **ভেরিফিকেশন বাধ্যতামূলক!**\n\n১০টি ভিডিও পেতে নিচের লিংকে ক্লিক করে ভেরিফাই করুন। প্রিমিয়াম মেম্বার হলে সরাসরি ভিডিও পাবেন।"
+        txt = "🚫 **ভেরিফিকেশন বাধ্যতামূলক!**\n\nফাইল পেতে নিচের লিংকে ক্লিক করে ভেরিফাই করুন। প্রিমিয়াম মেম্বার হলে সরাসরি ভিডিও পাবেন।"
         btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔗 ভেরিফাই লিংক", url=short_link)]])
         if is_cb: await update.message.reply(txt, reply_markup=btn); await update.answer()
         else: await update.reply(txt, reply_markup=btn)
@@ -255,6 +246,15 @@ async def redeem_cmd(client, message):
     await send_premium_report(client, message.from_user.id, expiry, method=f"Redeem Code ({data['duration']})")
 
 # ==================== ৫. অ্যাডমিন কমান্ডসমূহ ====================
+
+@app.on_message(filters.command("cleardata") & filters.user(ADMIN_ID))
+async def cleardata_admin(client, message):
+    try:
+        await files_col.delete_many({})
+        await users_col.update_many({}, {"$set": {"p_index": 0, "f_index": 0}})
+        await message.reply("✅ ডাটাবেস থেকে সকল ফাইল এবং ইউজার ইনডেক্স ডিলিট করা হয়েছে!")
+    except Exception as e:
+        await message.reply(f"Error: {e}")
 
 @app.on_message(filters.command("remove_premium") & filters.user(ADMIN_ID))
 async def remove_prem_admin(client, message):
@@ -327,7 +327,7 @@ async def add_time_cmd(client, message):
 @app.on_message(filters.command("deltime") & filters.user(ADMIN_ID))
 async def del_time_cmd(client, message):
     await settings_col.delete_one({"id": "auto_delete"})
-    await message.reply("❌ অটো ডিলিট টাইমার বন্ধ।")
+    await message.reply("❌ অটো ডিলিট টাইমার বন্ধ করা হয়েছে।")
 
 @app.on_message(filters.command("set_forward") & filters.user(ADMIN_ID))
 async def set_fwd_admin(client, message):
@@ -337,12 +337,15 @@ async def set_fwd_admin(client, message):
         await message.reply(f"✅ অ্যান্টি-ফরোয়ার্ড {status} হয়েছে।")
     except: await message.reply("নিয়ম: `/set_forward on/off`")
 
+# ==================== ৬. অটো সেভ ও ফাইল হ্যান্ডলার ====================
+
 @app.on_message(filters.chat(FILE_CHANNEL) & (filters.video | filters.document | filters.audio))
 async def auto_save_handler(client, message):
     await files_col.insert_one({"msg_id": message.id, "added_at": datetime.now()})
     await client.send_message(LOG_CHANNEL, f"✅ নতুন ফাইল সেভ হয়েছে! ID: `{message.id}`")
 
-# ==================== ৮. রান কমান্ডস ====================
+# ==================== ৭. রান কমান্ডস ও ওয়েব সার্ভার ====================
+
 async def web_server():
     server = web.Application()
     runner = web.AppRunner(server)
