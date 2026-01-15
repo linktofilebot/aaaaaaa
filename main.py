@@ -297,6 +297,20 @@ async def redeem_cmd(client, message):
 
 # ==================== ৫. অ্যাডমিন কমান্ডসমূহ ====================
 
+@app.on_message(filters.command("index") & filters.user(ADMIN_ID) & filters.chat(FILE_CHANNEL))
+async def index_files_handler(client, message):
+    status_msg = await message.reply("🔍 ইন্ডেক্সিং শুরু হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন।")
+    count = 0
+    async for m in client.get_chat_history(FILE_CHANNEL):
+        if m.video or m.document or m.audio:
+            exists = await files_col.find_one({"msg_id": m.id})
+            if not exists:
+                await files_col.insert_one({"msg_id": m.id, "added_at": datetime.now()})
+                count += 1
+                if count % 50 == 0:
+                    await status_msg.edit(f"⏳ প্রসেসিং চলছে... {count} টি নতুন ফাইল পাওয়া গেছে।")
+    await status_msg.edit(f"✅ ইন্ডেক্সিং সম্পন্ন!\n\n📂 মোট নতুন ফাইল সেভ হয়েছে: `{count}` টি।")
+
 @app.on_message(filters.command("cleardata") & filters.user(ADMIN_ID))
 async def cleardata_admin(client, message):
     try:
@@ -391,6 +405,9 @@ async def set_fwd_admin(client, message):
 
 @app.on_message(filters.chat(FILE_CHANNEL) & (filters.video | filters.document | filters.audio))
 async def auto_save_handler(client, message):
+    # চেক করে দেখা ফাইলটি কি কমান্ড হিসেবে এসেছে (যেমন /index)
+    if message.text and message.text.startswith("/"):
+        return
     await files_col.insert_one({"msg_id": message.id, "added_at": datetime.now()})
     await client.send_message(LOG_CHANNEL, f"✅ নতুন ফাইল সেভ হয়েছে! ID: `{message.id}`")
 
