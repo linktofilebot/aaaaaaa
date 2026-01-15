@@ -32,6 +32,11 @@ app = Client("file_store_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_T
 
 # ==================== ৩. সাহায্যকারী ফাংশনসমূহ (Helpers) ====================
 
+# ভিডিও লিমিট ডাটাবেস থেকে নেওয়ার ফাংশন (নতুন যুক্ত)
+async def get_video_limit():
+    data = await settings_col.find_one({"id": "video_limit"})
+    return data.get("count", 1) if data else 1
+
 def get_readable_time(expiry_date):
     delta = expiry_date - datetime.now()
     seconds = int(delta.total_seconds())
@@ -145,14 +150,16 @@ async def start_cmd(client, message):
         
         user_data = await users_col.find_one({"user_id": user_id})
         f_idx = user_data.get("f_index", 0)
-        # ১টি ফাইল পাঠানো হবে
-        files = await files_col.find().sort("_id", 1).skip(f_idx).limit(1).to_list(1)
+        
+        # ১ বা ততোধিক ফাইল পাঠানো হবে (ডায়নামিক করা হয়েছে)
+        limit_val = await get_video_limit()
+        files = await files_col.find().sort("_id", 1).skip(f_idx).limit(limit_val).to_list(limit_val)
         
         if not files:
             await users_col.update_one({"user_id": user_id}, {"$set": {"f_index": 0}}) 
             return await message.reply("সব ভিডিও দেখা শেষ! গেট ফাইলে ক্লিক করে আবার শুরু থেকে দেখুন।")
             
-        await message.reply("✅ ভেরিফিকেশন সফল! ভিডিও পাঠানো হচ্ছে...")
+        await message.reply(f"✅ ভেরিফিকেশন সফল! {len(files)}টি ভিডিও পাঠানো হচ্ছে...")
         p_on = await is_protect_on()
         timer_data = await settings_col.find_one({"id": "auto_delete"})
         
@@ -163,7 +170,8 @@ async def start_cmd(client, message):
                     asyncio.create_task(auto_delete_msg(client, user_id, sent_msg.id, timer_data["seconds"]))
             except: pass
         
-        await users_col.update_one({"user_id": user_id}, {"$inc": {"f_index": 1}})
+        # ইনডেক্স পাঠানো ফাইলের সংখ্যা অনুযায়ী বৃদ্ধি পাবে
+        await users_col.update_one({"user_id": user_id}, {"$inc": {"f_index": len(files)}})
         return
 
     is_prem, status_txt = await check_premium(user_id)
@@ -191,9 +199,10 @@ async def getfile_handler(client, update):
     is_prem, _ = await check_premium(user_id)
 
     if is_prem:
-        # প্রিমিয়াম ইউজার সরাসরি ১টি ফাইল পাবে
+        # প্রিমিয়াম ইউজার ডায়নামিক সংখ্যক ফাইল পাবে
         p_idx = user_data.get("p_index", 0)
-        files = await files_col.find().sort("_id", 1).skip(p_idx).limit(1).to_list(1)
+        limit_val = await get_video_limit()
+        files = await files_col.find().sort("_id", 1).skip(p_idx).limit(limit_val).to_list(limit_val)
         
         if not files:
             await users_col.update_one({"user_id": user_id}, {"$set": {"p_index": 0}}) 
@@ -202,7 +211,7 @@ async def getfile_handler(client, update):
             else: await update.reply(msg)
             return
         
-        if is_cb: await update.answer("প্রিমিয়াম ফাইল পাঠানো হচ্ছে...", show_alert=False)
+        if is_cb: await update.answer(f"{len(files)}টি ভিডিও পাঠানো হচ্ছে...", show_alert=False)
         p_on = await is_protect_on()
         timer_data = await settings_col.find_one({"id": "auto_delete"})
         
@@ -213,7 +222,8 @@ async def getfile_handler(client, update):
                     asyncio.create_task(auto_delete_msg(client, user_id, sent_msg.id, timer_data["seconds"]))
             except: pass
         
-        await users_col.update_one({"user_id": user_id}, {"$inc": {"p_index": 1}})
+        # ইনডেক্স পাঠানো ফাইলের সংখ্যা অনুযায়ী বৃদ্ধি পাবে
+        await users_col.update_one({"user_id": user_id}, {"$inc": {"p_index": len(files)}})
 
     else:
         # সাধারণ ইউজার ১টি ফাইলের জন্য ভেরিফাই লিংক পাবে
@@ -236,8 +246,9 @@ async def skip_file_handler(client, message):
 
     input_val = message.command[1].lower()
     if input_val == "next":
-        await users_col.update_one({"user_id": user_id}, {"$inc": {index_field: 1}})
-        return await message.reply("⏭ ১টি ফাইল স্কিপ করা হয়েছে।")
+        limit_val = await get_video_limit()
+        await users_col.update_one({"user_id": user_id}, {"$inc": {index_field: limit_val}})
+        return await message.reply(f"⏭ {limit_val}টি ফাইল স্কিপ করা হয়েছে।")
 
     try:
         target_index = int(input_val)
@@ -311,6 +322,21 @@ async def redeem_cmd(client, message):
     await send_premium_report(client, message.from_user.id, expiry, method=f"Redeem Code ({data['duration']})")
 
 # ==================== ৫. অ্যাডমিন কমান্ডসমূহ ====================
+
+# এক ক্লিকে কয়টি ভিডিও যাবে তা সেট করার নতুন কমান্ড (Dynamic Limit)
+@app.on_message(filters.command("sendvideo") & filters.user(ADMIN_ID))
+async def set_send_video_limit(client, message):
+    if len(message.command) < 2:
+        return await message.reply("📝 **সঠিক ব্যবহার:** `/sendvideo সংখ্যা` (যেমন: `/sendvideo 5`)")
+    try:
+        count = int(message.command[1])
+        if count < 1:
+            return await message.reply("❌ সংখ্যা অবশ্যই ১ এর বেশি হতে হবে।")
+        
+        await settings_col.update_one({"id": "video_limit"}, {"$set": {"count": count}}, upsert=True)
+        await message.reply(f"✅ সফল! এখন থেকে প্রতি ক্লিকে **{count}টি** করে ভিডিও পাঠানো হবে।")
+    except ValueError:
+        await message.reply("❌ ভুল ফরম্যাট! শুধু সংখ্যা ব্যবহার করুন।")
 
 @app.on_message(filters.command("index") & filters.user(ADMIN_ID))
 async def index_files_handler(client, message):
