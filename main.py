@@ -125,7 +125,7 @@ async def start_cmd(client, message):
 
     if len(message.command) > 1 and message.command[1].startswith("verify"):
         is_prem, _ = await check_premium(user_id)
-        if is_prem: return await message.reply("আপনি প্রিমিয়াম মেম্বার, আপনার ভেরিফিকেশন প্রয়োজন নেই।")
+        if is_prem: return await message.reply("আপনি ইতিমধ্যে প্রিমিয়াম মেম্বার।")
         
         user_data = await users_col.find_one({"user_id": user_id})
         f_idx = user_data.get("f_index", 0)
@@ -135,31 +135,25 @@ async def start_cmd(client, message):
             await users_col.update_one({"user_id": user_id}, {"$set": {"f_index": 0}}) 
             return await message.reply("সব ভিডিও দেখা শেষ! গেট ফাইলে ক্লিক করে আবার শুরু থেকে দেখুন।")
             
-        await message.reply("✅ ভেরিফিকেশন সফল! আপনার ১০টি ভিডিও ক্রমানুসারে পাঠানো হচ্ছে...")
+        await message.reply("✅ ভেরিফিকেশন সফল! ভিডিও পাঠানো হচ্ছে...")
         p_on = await is_protect_on()
         timer_data = await settings_col.find_one({"id": "auto_delete"})
         
         for f in files:
             try:
                 sent_msg = await client.copy_message(user_id, FILE_CHANNEL, f["msg_id"], protect_content=p_on)
-                if timer_data:
+                if sent_msg and timer_data:
                     asyncio.create_task(auto_delete_msg(client, user_id, sent_msg.id, timer_data["seconds"]))
                 await asyncio.sleep(1.5) 
             except: pass
         
-        if timer_data:
-            await message.reply(f"⚠️ ভিডিওগুলো {timer_data['time_str']} পর অটোমেটিক ডিলিট হয়ে যাবে।")
         await users_col.update_one({"user_id": user_id}, {"$inc": {"f_index": 10}})
         return
 
     is_prem, status_txt = await check_premium(user_id)
-    btn = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📂 Get Files", callback_data="get_file_logic")],
-        [InlineKeyboardButton("💎 View Plans", callback_data="show_plans_logic"),
-         InlineKeyboardButton("Owner 👑", url=f"https://t.me/{OWNER_USERNAME}")]
-    ])
+    btn = InlineKeyboardMarkup([[InlineKeyboardButton("📂 Get Files", callback_data="get_file_logic")],[InlineKeyboardButton("💎 View Plans", callback_data="show_plans_logic"), InlineKeyboardButton("Owner 👑", url=f"https://t.me/{OWNER_USERNAME}")]])
     
-    start_text = (f"👋 আসসালামু আলাইকুম {message.from_user.first_name}!\n\n🆔 **আপনার আইডি:** `{user_id}`\n🎭 **আপনার নাম:** {message.from_user.first_name}\n💎 **মেম্বারশিপ:** {status_txt}\n\nফাইল পেতে নিচের বাটনে ক্লিক করুন অথবা কমান্ড দিন।")
+    start_text = (f"👋 আসসালামু আলাইকুম {message.from_user.first_name}!\n\n🆔 **আপনার আইডি:** `{user_id}`\n🎭 **আপনার নাম:** {message.from_user.first_name}\n💎 **মেম্বারশিপ:** {status_txt}\n\nফাইল পেতে নিচের বাটনে ক্লিক করুন।")
     try:
         async for photo in client.get_chat_photos(user_id, limit=1):
             await message.reply_photo(photo=photo.file_id, caption=start_text, reply_markup=btn)
@@ -167,7 +161,6 @@ async def start_cmd(client, message):
     except: pass
     await message.reply_text(start_text, reply_markup=btn)
 
-# --- ফিক্সড গেটফাইল (বাটন ও কমান্ড) ---
 @app.on_callback_query(filters.regex("get_file_logic"))
 @app.on_message(filters.command("getfile"))
 async def getfile_handler(client, update):
@@ -185,20 +178,28 @@ async def getfile_handler(client, update):
         files = await files_col.find().sort("_id", 1).skip(p_idx).limit(1).to_list(1)
         if not files:
             await users_col.update_one({"user_id": user_id}, {"$set": {"p_index": 0}}) 
-            msg = "সব ভিডিও শেষ! আবার প্রথম থেকে ১টি করে দেওয়া হবে।"
+            msg = "সব ফাইল শেষ! আবার প্রথম থেকে শুরু হবে।"
             if is_cb: await update.message.reply(msg)
             else: await update.reply(msg)
             return
         
         p_on = await is_protect_on()
-        sent_msg = await client.copy_message(user_id, FILE_CHANNEL, files[0]["msg_id"], protect_content=p_on)
-        timer_data = await settings_col.find_one({"id": "auto_delete"})
-        if timer_data:
-            asyncio.create_task(auto_delete_msg(client, user_id, sent_msg.id, timer_data["seconds"]))
-            await client.send_message(user_id, f"⚠️ ভিডিওটি {timer_data['time_str']} পর অটোমেটিক ডিলিট হয়ে যাবে।")
-
-        await users_col.update_one({"user_id": user_id}, {"$inc": {"p_index": 1}})
-        if is_cb: await update.answer("১টি ভিডিও পাঠানো হয়েছে।")
+        try:
+            sent_msg = await client.copy_message(user_id, FILE_CHANNEL, files[0]["msg_id"], protect_content=p_on)
+            if sent_msg:
+                timer_data = await settings_col.find_one({"id": "auto_delete"})
+                if timer_data:
+                    asyncio.create_task(auto_delete_msg(client, user_id, sent_msg.id, timer_data["seconds"]))
+                    await client.send_message(user_id, f"⚠️ এই ভিডিওটি {timer_data['time_str']} পর অটোমেটিক ডিলিট হয়ে যাবে।")
+                await users_col.update_one({"user_id": user_id}, {"$inc": {"p_index": 1}})
+                if is_cb: await update.answer("১টি ভিডিও পাঠানো হয়েছে।")
+            else:
+                raise Exception("Empty message")
+        except Exception as e:
+            print(f"Error: {e}")
+            msg = "❌ দুঃখিত, এই ফাইলটি চ্যানেলে খুঁজে পাওয়া যায়নি।"
+            if is_cb: await update.message.reply(msg)
+            else: await update.reply(msg)
     else:
         me = await client.get_me()
         verify_url = f"https://t.me/{me.username}?start=verify_{user_id}"
@@ -220,7 +221,7 @@ async def plan_commands(client, update):
 
     txt = "💎 **আমাদের প্রিমিয়াম প্ল্যানসমূহ:**\n\n"
     for p in plans: txt += f"🔹 {p['days']} দিন - {p['price']} টাকা\n"
-    txt += f"\n💳 প্রিমিয়াম মেম্বারশিপ কিনতে যোগাযোগ করুন: @{OWNER_USERNAME}\n\nপেমেন্ট করার পর আপনাকে একটি **Redeem Code** দেওয়া হবে।"
+    txt += f"\n💳 মেম্বারশিপ কিনতে যোগাযোগ করুন: @{OWNER_USERNAME}"
     btn = InlineKeyboardMarkup([[InlineKeyboardButton("Owner 👑", url=f"https://t.me/{OWNER_USERNAME}")],[InlineKeyboardButton("🔙 ফিরে যান", callback_data="back_home")]])
     if is_cb: await update.message.edit_text(txt, reply_markup=btn)
     else: await update.reply_text(txt, reply_markup=btn)
@@ -229,8 +230,8 @@ async def plan_commands(client, update):
 async def back_home(client, query):
     user_id = query.from_user.id
     is_prem, status_txt = await check_premium(user_id)
-    btn = InlineKeyboardMarkup([[InlineKeyboardButton("📂 Get Files", callback_data="get_file_logic")],[InlineKeyboardButton("💎 View Plans", callback_data="show_plans_logic"),InlineKeyboardButton("Owner 👑", url=f"https://t.me/{OWNER_USERNAME}")]])
-    await query.message.edit_text(f"👋 আসসালামু আলাইকুম!\n🆔 আপনার আইডি: `{user_id}`\n💎 স্ট্যাটাস: {status_txt}", reply_markup=btn)
+    btn = InlineKeyboardMarkup([[InlineKeyboardButton("📂 Get Files", callback_data="get_file_logic")],[InlineKeyboardButton("💎 View Plans", callback_data="show_plans_logic"), InlineKeyboardButton("Owner 👑", url=f"https://t.me/{OWNER_USERNAME}")]])
+    await query.message.edit_text(f"👋 আসসালামু আলাইকুম!\n🆔 আপনার আইডি: `{user_id}`\n💎 মেম্বারশিপ: {status_txt}", reply_markup=btn)
 
 @app.on_message(filters.command("redeem"))
 async def redeem_cmd(client, message):
@@ -248,11 +249,48 @@ async def redeem_cmd(client, message):
 @app.on_message(filters.command("remove_premium") & filters.user(ADMIN_ID))
 async def remove_prem_admin(client, message):
     try:
-        if len(message.command) < 2: return await message.reply("ইউজার আইডি দিন।")
         u_id = int(message.command[1])
         await users_col.update_one({"user_id": u_id}, {"$set": {"is_premium": False}, "$unset": {"expiry_date": ""}})
         await message.reply(f"✅ ইউজার {u_id} এর প্রিমিয়াম রিমুভ হয়েছে।")
     except: await message.reply("সঠিক নিয়ম: `/remove_premium ID`")
+
+@app.on_message(filters.command("add_premium") & filters.user(ADMIN_ID))
+async def add_prem_manual(client, message):
+    try:
+        u_id, days = int(message.command[1]), int(message.command[2])
+        expiry = datetime.now() + timedelta(days=days)
+        await users_col.update_one({"user_id": u_id}, {"$set": {"is_premium": True, "expiry_date": expiry, "p_index": 0}}, upsert=True)
+        await message.reply(f"✅ ইউজার {u_id} এখন প্রিমিয়াম মেম্বার।")
+        await send_premium_report(client, u_id, expiry, method=f"Admin Manual")
+    except: await message.reply("সঠিক নিয়ম: `/add_premium ID দিন`")
+
+@app.on_message(filters.command("add_redeem") & filters.user(ADMIN_ID))
+async def add_red_admin(client, message):
+    try:
+        duration, count = message.command[1], int(message.command[2])
+        codes = []
+        for _ in range(count):
+            c = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+            await redeem_col.insert_one({"code": c, "duration": duration, "is_used": False})
+            codes.append(f"`{c}`")
+        await message.reply(f"✅ তৈরি হয়েছে:\n" + "\n".join(codes))
+    except: await message.reply("সঠিক নিয়ম: `/add_redeem 1month 5`")
+
+@app.on_message(filters.command("addplan") & filters.user(ADMIN_ID))
+async def addplan_admin(client, message):
+    try:
+        days, price = int(message.command[1]), int(message.command[2])
+        await plans_col.update_one({"days": days}, {"$set": {"price": price}}, upsert=True)
+        await message.reply(f"✅ প্ল্যান এড হয়েছে: {days} দিন - {price} টাকা")
+    except: await message.reply("সঠিক নিয়ম: `/addplan দিন টাকা`")
+
+@app.on_message(filters.command("delplan") & filters.user(ADMIN_ID))
+async def delplan_admin(client, message):
+    try:
+        days = int(message.command[1])
+        await plans_col.delete_one({"days": days})
+        await message.reply(f"✅ প্ল্যান ডিলিট হয়েছে।")
+    except: await message.reply("উদা: `/delplan 30`")
 
 @app.on_message(filters.command("set_shortener") & filters.user(ADMIN_ID))
 async def set_short_admin(client, message):
@@ -265,58 +303,21 @@ async def set_short_admin(client, message):
 @app.on_message(filters.command("del_shortener") & filters.user(ADMIN_ID))
 async def del_short_admin(client, message):
     await settings_col.delete_one({"id": "shortener"})
-    await message.reply("❌ শর্টেনার ডিলিট করা হয়েছে।")
+    await message.reply("❌ সর্টেনার সেটিংস ডিলিট করা হয়েছে।")
 
 @app.on_message(filters.command("addtime") & filters.user(ADMIN_ID))
 async def add_time_cmd(client, message):
-    if len(message.command) < 2: return await message.reply("উদা: `/addtime 10min`")
-    time_str = message.command[1]
-    duration = parse_duration(time_str)
-    await settings_col.update_one({"id": "auto_delete"}, {"$set": {"seconds": duration.total_seconds(), "time_str": time_str}}, upsert=True)
-    await message.reply(f"✅ অটো ডিলিট সেট: **{time_str}**")
+    try:
+        time_str = message.command[1]
+        duration = parse_duration(time_str)
+        await settings_col.update_one({"id": "auto_delete"}, {"$set": {"seconds": duration.total_seconds(), "time_str": time_str}}, upsert=True)
+        await message.reply(f"✅ অটো ডিলিট সেট: **{time_str}**")
+    except: await message.reply("উদা: `/addtime 5min`")
 
 @app.on_message(filters.command("deltime") & filters.user(ADMIN_ID))
 async def del_time_cmd(client, message):
     await settings_col.delete_one({"id": "auto_delete"})
     await message.reply("❌ অটো ডিলিট টাইমার বন্ধ।")
-
-@app.on_message(filters.command("addplan") & filters.user(ADMIN_ID))
-async def addplan_admin(client, message):
-    try:
-        days, price = int(message.command[1]), int(message.command[2])
-        await plans_col.update_one({"days": days}, {"$set": {"price": price}}, upsert=True)
-        await message.reply(f"✅ প্ল্যান এড হয়েছে।")
-    except: await message.reply("নিয়ম: `/addplan দিন টাকা`")
-
-@app.on_message(filters.command("delplan") & filters.user(ADMIN_ID))
-async def delplan_admin(client, message):
-    try:
-        days = int(message.command[1])
-        await plans_col.delete_one({"days": days})
-        await message.reply(f"✅ {days} দিনের প্ল্যান ডিলিট হয়েছে।")
-    except: await message.reply("নিয়ম: `/delplan দিন`")
-
-@app.on_message(filters.command("add_redeem") & filters.user(ADMIN_ID))
-async def add_red_admin(client, message):
-    try:
-        duration, count = message.command[1], int(message.command[2])
-        codes = []
-        for _ in range(count):
-            c = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
-            await redeem_col.insert_one({"code": c, "duration": duration, "is_used": False})
-            codes.append(f"`{c}`")
-        await message.reply(f"✅ তৈরি হয়েছে:\n" + "\n".join(codes))
-    except: await message.reply("নিয়ম: `/add_redeem 1day 5`")
-
-@app.on_message(filters.command("add_premium") & filters.user(ADMIN_ID))
-async def add_prem_manual(client, message):
-    try:
-        u_id, days = int(message.command[1]), int(message.command[2])
-        expiry = datetime.now() + timedelta(days=days)
-        await users_col.update_one({"user_id": u_id}, {"$set": {"is_premium": True, "expiry_date": expiry, "p_index": 0}}, upsert=True)
-        await message.reply(f"✅ ইউজার {u_id} এখন প্রিমিয়াম মেম্বার।")
-        await send_premium_report(client, u_id, expiry, method=f"Admin Manual")
-    except: await message.reply("নিয়ম: `/add_premium ID দিন`")
 
 @app.on_message(filters.command("set_forward") & filters.user(ADMIN_ID))
 async def set_fwd_admin(client, message):
@@ -329,7 +330,7 @@ async def set_fwd_admin(client, message):
 @app.on_message(filters.chat(FILE_CHANNEL) & (filters.video | filters.document | filters.audio))
 async def auto_save_handler(client, message):
     await files_col.insert_one({"msg_id": message.id, "added_at": datetime.now()})
-    await client.send_message(LOG_CHANNEL, f"✅ নতুন ফাইল ডাটাবেসে সেভ হয়েছে! ID: `{message.id}`")
+    await client.send_message(LOG_CHANNEL, f"✅ নতুন ফাইল সেভ হয়েছে! ID: `{message.id}`")
 
 # ==================== ৮. রান কমান্ডস ====================
 async def web_server():
@@ -341,6 +342,14 @@ async def web_server():
 async def main():
     await web_server()
     await app.start()
+    
+    # Peer ID Resolve (Fixes KeyError/ValueError)
+    try:
+        await app.get_chat(FILE_CHANNEL)
+        print(f"FILE_CHANNEL Resolved: {FILE_CHANNEL}")
+    except Exception as e:
+        print(f"Resolve Error: {e}")
+
     print("বটটি সফলভাবে চালু হয়েছে! 🚀")
     await idle()
 
