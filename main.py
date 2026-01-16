@@ -1,3 +1,4 @@
+import os
 from aiohttp import web
 import asyncio
 import random
@@ -494,15 +495,24 @@ async def auto_save_handler(client, message):
 
 # ==================== ৭. রান কমান্ডস ও ওয়েব সার্ভার ====================
 
+# আপটাইম এরর ফিক্স করতে নতুন ফাংশন
+async def uptime_handler(request):
+    return web.Response(text="Bot is Alive! 🚀")
+
 async def web_server():
     server = web.Application()
+    # হোমপেজ রুট সেট করা হলো যাতে আপটাইম বট 200 OK রেসপন্স পায়
+    server.router.add_get("/", uptime_handler) 
     runner = web.AppRunner(server)
     await runner.setup()
-    await web.TCPSite(runner, "0.0.0.0", 8080).start()
+    
+    # Render বা Koyeb এ ডাইনামিক পোর্টের জন্য os.environ ব্যবহার করা ভালো
+    port = int(os.environ.get("PORT", 8080))
+    await web.TCPSite(runner, "0.0.0.0", port).start()
 
 async def main():
-    await web_server()
-    await app.start()
+    await web_server() # ওয়েব সার্ভার চালু হলো
+    await app.start() # বট চালু হলো
     
     try:
         await app.get_chat(FILE_CHANNEL)
@@ -514,4 +524,8 @@ async def main():
     await idle()
 
 if __name__ == "__main__":
-    asyncio.get_event_loop().run_until_complete(main())
+    # ইভেন্ট লুপ ফিক্সড
+    try:
+        asyncio.get_event_loop().run_until_complete(main())
+    except KeyboardInterrupt:
+        pass
